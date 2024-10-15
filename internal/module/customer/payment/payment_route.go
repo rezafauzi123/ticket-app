@@ -2,6 +2,8 @@ package auth
 
 import (
 	"ticket-app/config"
+	event "ticket-app/internal/module/customer/event"
+	ticket "ticket-app/internal/module/customer/ticket"
 	"ticket-app/internal/repository"
 	middleware "ticket-app/pkg/middleware"
 
@@ -11,7 +13,10 @@ import (
 func RegisterPaymentRoutes(r chi.Router, app config.AppConfig, role string) {
 	paymentRepo := repository.NewPaymentRepository(app)
 	ticketRepo := repository.NewTicketRepository(app)
-	paymentService := NewPaymentService(paymentRepo, ticketRepo, app)
+	eventRepo := repository.NewEventRepository(app)
+	eventService := event.NewEventService(eventRepo, app)
+	ticketService := ticket.NewTicketService(ticketRepo, eventService, app)
+	paymentService := NewPaymentService(paymentRepo, ticketService, app)
 	paymentHandler := NewPaymentHandler(paymentService, app)
 
 	r.With(middleware.JWTMiddleware(role)).Route("/payment", func(r chi.Router) {

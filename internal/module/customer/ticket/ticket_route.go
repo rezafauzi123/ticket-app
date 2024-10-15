@@ -2,6 +2,7 @@ package auth
 
 import (
 	"ticket-app/config"
+	event "ticket-app/internal/module/customer/event"
 	"ticket-app/internal/repository"
 	middleware "ticket-app/pkg/middleware"
 
@@ -11,7 +12,8 @@ import (
 func RegisterTicketRoutes(r chi.Router, app config.AppConfig, role string) {
 	ticketRepo := repository.NewTicketRepository(app)
 	eventRepo := repository.NewEventRepository(app)
-	ticketService := NewTicketService(ticketRepo, eventRepo, app)
+	eventService := event.NewEventService(eventRepo, app)
+	ticketService := NewTicketService(ticketRepo, eventService, app)
 	ticketHandler := NewTicketHandler(ticketService, app)
 
 	r.With(middleware.JWTMiddleware(role)).Route("/ticket", func(r chi.Router) {

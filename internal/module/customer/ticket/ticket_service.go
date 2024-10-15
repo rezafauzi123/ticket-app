@@ -4,6 +4,7 @@ import (
 	"errors"
 	"ticket-app/config"
 	"ticket-app/internal/entity"
+	event "ticket-app/internal/module/customer/event"
 	"ticket-app/internal/module/customer/ticket/request"
 	"ticket-app/internal/repository"
 	"ticket-app/pkg/constant"
@@ -14,32 +15,24 @@ type TicketService interface {
 	CancelTicket(id string) (*entity.Ticket, error)
 	FindByUserID(userID string) ([]*entity.Ticket, error)
 	FindByID(id string) (*entity.Ticket, error)
+	UpdateStatus(ticketID string, status string) error
 }
 
 type ticketService struct {
-	ticketRepo repository.TicketRepository
-	eventRepo  repository.EventRepository
-	config     config.AppConfig
+	ticketRepo   repository.TicketRepository
+	eventService event.EventService
+	config       config.AppConfig
 }
 
-func NewTicketService(ticketRepo repository.TicketRepository, eventRepo repository.EventRepository, config config.AppConfig) TicketService {
+func NewTicketService(ticketRepo repository.TicketRepository, eventService event.EventService, config config.AppConfig) TicketService {
 	return &ticketService{
-		ticketRepo: ticketRepo,
-		eventRepo:  eventRepo,
-		config:     config,
+		ticketRepo:   ticketRepo,
+		eventService: eventService,
+		config:       config,
 	}
 }
 
 func (u *ticketService) BuyTicket(req request.BuyTicketRequest, userID string) (*entity.Ticket, error) {
-	event, err := u.eventRepo.FindByID(req.EventID)
-	if err != nil {
-		return nil, err
-	}
-
-	if event == nil {
-		return nil, errors.New(constant.DATA_NOT_FOUND)
-	}
-
 	var ticket = &entity.Ticket{
 		UserID:  userID,
 		EventID: req.EventID,
@@ -51,8 +44,7 @@ func (u *ticketService) BuyTicket(req request.BuyTicketRequest, userID string) (
 		return nil, err
 	}
 
-	event.AvailableTickets -= 1
-	_, err = u.eventRepo.Update(req.EventID, *event)
+	_, err = u.eventService.DecreaseTicket(req.EventID)
 	if err != nil {
 		return nil, err
 	}
@@ -83,26 +75,26 @@ func (u *ticketService) CancelTicket(id string) (*entity.Ticket, error) {
 		return nil, errors.New(constant.ALREADY_CANCELED)
 	}
 
-	event, err := u.eventRepo.FindByID(existingData.EventID)
-	if err != nil {
-		return nil, err
-	}
-
-	if event == nil {
-		return nil, errors.New(constant.DATA_NOT_FOUND)
-	}
-
 	existingData.Status = constant.STATUS_CANCELED
 	updatedData, err := u.ticketRepo.Update(id, *existingData)
 	if err != nil {
 		return nil, err
 	}
 
-	event.AvailableTickets += 1
-	_, err = u.eventRepo.Update(existingData.EventID, *event)
+	_, err = u.eventService.IncreaseTicket(existingData.EventID)
 	if err != nil {
 		return nil, err
 	}
-
 	return updatedData, nil
+}
+
+func (u *ticketService) UpdateStatus(ticketID string, status string) error {
+	ticket, err := u.ticketRepo.FindByID(ticketID)
+	if err != nil || ticket == nil {
+		return errors.New(constant.DATA_NOT_FOUND)
+	}
+
+	ticket.Status = status
+	_, err = u.ticketRepo.Update(ticketID, *ticket)
+	return err
 }

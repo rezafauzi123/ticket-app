@@ -8,6 +8,8 @@ import (
 	"ticket-app/internal/repository"
 	"ticket-app/pkg/constant"
 	"time"
+
+	ticket "ticket-app/internal/module/customer/ticket"
 )
 
 type PaymentService interface {
@@ -16,30 +18,26 @@ type PaymentService interface {
 }
 
 type paymentService struct {
-	paymentRepo repository.PaymentRepository
-	ticketRepo  repository.TicketRepository
-	config      config.AppConfig
+	paymentRepo   repository.PaymentRepository
+	ticketService ticket.TicketService
+	config        config.AppConfig
 }
 
-func NewPaymentService(paymentRepo repository.PaymentRepository, ticketRepository repository.TicketRepository, config config.AppConfig) PaymentService {
+func NewPaymentService(paymentRepo repository.PaymentRepository, ticketService ticket.TicketService, config config.AppConfig) PaymentService {
 	return &paymentService{
-		paymentRepo: paymentRepo,
-		ticketRepo:  ticketRepository,
-		config:      config,
+		paymentRepo:   paymentRepo,
+		ticketService: ticketService,
+		config:        config,
 	}
 }
 
 func (u *paymentService) ProcessPayment(req request.PaymentRequest, userID string) (*entity.Payment, error) {
-	ticket, err := u.ticketRepo.FindByID(req.TicketID)
+	ticket, err := u.ticketService.FindByID(req.TicketID)
 	if err != nil {
 		return nil, err
 	}
 
-	if ticket == nil {
-		return nil, errors.New(constant.DATA_NOT_FOUND)
-	}
-
-	if ticket.Status != constant.STATUS_PENDING {
+	if ticket == nil || ticket.Status != constant.STATUS_PENDING {
 		return nil, errors.New(constant.DATA_NOT_FOUND)
 	}
 
@@ -57,8 +55,7 @@ func (u *paymentService) ProcessPayment(req request.PaymentRequest, userID strin
 		return nil, err
 	}
 
-	ticket.Status = constant.STATUS_ON_PROCESS
-	_, err = u.ticketRepo.Update(req.TicketID, *ticket)
+	err = u.ticketService.UpdateStatus(req.TicketID, constant.STATUS_ON_PROCESS)
 	if err != nil {
 		return nil, err
 	}
@@ -68,28 +65,7 @@ func (u *paymentService) ProcessPayment(req request.PaymentRequest, userID strin
 
 func (u *paymentService) CancelPayment(id, userID string) (*entity.Payment, error) {
 	payment, err := u.paymentRepo.FindByID(id)
-	if err != nil {
-		return nil, err
-	}
-
-	if payment == nil {
-		return nil, errors.New(constant.DATA_NOT_FOUND)
-	}
-
-	if payment.Status != constant.STATUS_PENDING {
-		return nil, errors.New(constant.DATA_NOT_FOUND)
-	}
-
-	ticket, err := u.ticketRepo.FindByID(payment.TicketID)
-	if err != nil {
-		return nil, err
-	}
-
-	if ticket == nil {
-		return nil, errors.New(constant.DATA_NOT_FOUND)
-	}
-
-	if ticket.Status != constant.STATUS_ON_PROCESS {
+	if err != nil || payment == nil || payment.Status != constant.STATUS_PENDING {
 		return nil, errors.New(constant.DATA_NOT_FOUND)
 	}
 
@@ -99,8 +75,7 @@ func (u *paymentService) CancelPayment(id, userID string) (*entity.Payment, erro
 		return nil, err
 	}
 
-	ticket.Status = constant.STATUS_CANCELED
-	_, err = u.ticketRepo.Update(payment.TicketID, *ticket)
+	err = u.ticketService.UpdateStatus(payment.TicketID, constant.STATUS_CANCELED)
 	if err != nil {
 		return nil, err
 	}
